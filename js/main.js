@@ -30,7 +30,7 @@
     html.lang = lang;
     html.dir = lang === "ar" ? "rtl" : "ltr";
     $$("[data-i18n]").forEach(el => { el.textContent = t(el.dataset.i18n); });
-    document.title = lang === "ar" ? "ناصر عسكر · مصوّر فيديو وفوتو في لبنان" : "Nasser Askar · Videographer & Photographer in Lebanon";
+    document.title = lang === "ar" ? "ناصر عسكر | تصوير فيديو وفوتو وصناعة محتوى في لبنان" : "Nasser Askar | Videographer, Photographer & Content Creation in Lebanon";
   }
 
   /* ------------------------------------------------------------- WhatsApp */
