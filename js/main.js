@@ -175,7 +175,7 @@
   }
   function photoCardHTML(ph, i) {
     return `<article class="card card--photo" data-cat="photo" data-photo="${i}" tabindex="0" role="button" aria-label="${ph.client} photo">
-      <div class="card__media"><img src="${ph.src}" alt="${ph.client} – ${t("cat." + ph.category)} photography by Nasser Askar" loading="lazy" decoding="async"></div>
+      <div class="card__media"><img src="${ph.thumb || ph.src}" alt="${ph.client} – ${t("cat." + ph.category)} photography by Nasser Askar" loading="lazy" decoding="async"></div>
       <span class="card__shine"></span>
       <span class="card__cat">${t("cat.photo")}</span>
       <div class="card__info"><div><span class="card__client">${ph.client}</span></div></div>
@@ -243,7 +243,9 @@
     const visible = $$(".card", grid).filter(c => !c.hidden)
       .sort((a, b) => activeCat === "all" ? a.dataset.allOrder - b.dataset.allOrder : a.dataset.catOrder - b.dataset.catOrder);
     visible.forEach(card => {
-      const h = Math.round(cw * cardRatio(card));
+      const ratio = cardRatio(card);
+      card.classList.toggle("is-wide", ratio < 1);   // landscape video / photo: slimmer label
+      const h = Math.round(cw * ratio);
       let col = 0;
       for (let i = 1; i < cols; i++) if (heights[i] < heights[col] - 1) col = i;
       const xLtr = col * (cw + gap);
@@ -364,39 +366,80 @@
 
   /* ------------------------------------------------------------- lightbox */
   const lb = { el: null, video: null, last: null };
-  function openCard(card) {
+  // The viewer walks through the cards currently shown in the grid (same filter, same order as on screen)
+  function visibleCardsInOrder() {
+    return $$("#grid .card").filter(c => !c.hidden)
+      .sort((a, b) => (a.getBoundingClientRect().top - b.getBoundingClientRect().top) || (a.getBoundingClientRect().left - b.getBoundingClientRect().left));
+  }
+  function showInLightbox(card) {
     lb.last = card;
-    const box = $("#lightbox"), v = $("#lbVideo"), stage = $(".lightbox__stage");
-    let client, title, msgItem;
+    const v = $("#lbVideo"), img = $("#lbImg"), stage = $("#lbStage");
+    let client, title, cat, msgItem;
+    v.pause();
     if (card.dataset.photo !== undefined) {
       const ph = C.photos[+card.dataset.photo];
-      v.hidden = true; v.removeAttribute("src");
-      let img = $("img", stage);
-      if (!img) { img = document.createElement("img"); stage.appendChild(img); }
-      img.src = ph.src; img.alt = ph.client; img.hidden = false;
-      img.style.cssText = "max-height:86vh;max-width:min(80vw,1300px);object-fit:contain";
-      client = t("cat.photo"); title = ph.client; msgItem = `${ph.client} (${t("cat.photo")})`;
+      v.hidden = true; v.removeAttribute("src"); v.load();
+      img.hidden = false; img.src = ph.src; img.alt = `${ph.client} – photography by Nasser Askar`;
+      stage.classList.toggle("is-vertical", (ph.h || 4) > (ph.w || 3));
+      cat = t("cat.photo"); client = ph.client; title = t("cat." + ph.category);
+      msgItem = `${ph.client} (${t("cat.photo")})`;
     } else {
       const p = C.projects.find(x => x.id === card.dataset.id);
-      const img = $("img", stage); if (img) img.hidden = true;
+      img.hidden = true; img.removeAttribute("src");
+      stage.classList.toggle("is-vertical", p.orientation !== "horizontal");
       v.hidden = false; v.poster = p.poster; v.src = p.video;
       v.play().catch(() => {});
-      client = `${p.client} · ${t("cat." + p.category)}`; title = L(p.title); msgItem = `${p.client} — ${L(p.title)}`;
+      cat = t("cat." + p.category); client = p.client; title = L(p.title);
+      msgItem = `${p.client} — ${L(p.title)}`;
     }
+    $("#lbCat").textContent = cat;
     $("#lbClient").textContent = client;
     $("#lbTitle").textContent = title;
+    const list = visibleCardsInOrder(), i = list.indexOf(card);
+    $("#lbCount").textContent = i >= 0 ? `${i + 1} / ${list.length}` : "";
     $(".js-wa-project").href = waUrl(`${t("wa.project")}\n${msgItem}`);
+  }
+  function openCard(card) {
+    const box = $("#lightbox");
+    showInLightbox(card);
     box.classList.add("is-open"); box.setAttribute("aria-hidden", "false");
     lenis && lenis.stop();
     $("#lbClose").focus();
+  }
+  function stepLightbox(dir) {
+    const list = visibleCardsInOrder();
+    if (!list.length) return;
+    let i = list.indexOf(lb.last);
+    i = (i + dir + list.length) % list.length;
+    const stage = $("#lbStage");
+    stage.classList.add("is-swap");
+    setTimeout(() => { showInLightbox(list[i]); stage.classList.remove("is-swap"); }, 180);
   }
   function closeLightbox() {
     const box = $("#lightbox"), v = $("#lbVideo");
     if (!box.classList.contains("is-open")) return;
     box.classList.remove("is-open"); box.setAttribute("aria-hidden", "true");
-    v.pause(); setTimeout(() => v.removeAttribute("src"), 400);
+    v.pause(); setTimeout(() => { v.removeAttribute("src"); v.load(); }, 400);
     lenis && lenis.start();
     lb.last && lb.last.focus({ preventScroll: true });
+  }
+  function bindLightbox() {
+    $("#lbClose").addEventListener("click", closeLightbox);
+    $("#lbPrev").addEventListener("click", () => stepLightbox(html.dir === "rtl" ? 1 : -1));
+    $("#lbNext").addEventListener("click", () => stepLightbox(html.dir === "rtl" ? -1 : 1));
+    $("#lightbox").addEventListener("click", e => { if (e.target.id === "lightbox" || e.target.classList.contains("lightbox__body")) closeLightbox(); });
+    addEventListener("keydown", e => {
+      if (!$("#lightbox").classList.contains("is-open")) return;
+      if (e.key === "ArrowRight") stepLightbox(html.dir === "rtl" ? -1 : 1);
+      if (e.key === "ArrowLeft") stepLightbox(html.dir === "rtl" ? 1 : -1);
+    });
+    let sx = null;
+    $("#lbStage").addEventListener("touchstart", e => { sx = e.touches[0].clientX; }, { passive: true });
+    $("#lbStage").addEventListener("touchend", e => {
+      if (sx === null) return;
+      const dx = e.changedTouches[0].clientX - sx; sx = null;
+      if (Math.abs(dx) > 50) stepLightbox((dx < 0 ? 1 : -1) * (html.dir === "rtl" ? -1 : 1));
+    });
   }
 
   /* -------------------------------------------------------------- process */
@@ -420,7 +463,7 @@
 
   /* ---------------------------------------------------------------- photos */
   function renderPhotos() {
-    $("#photosTrack").innerHTML = shuffled("strip", C.photos).slice(0, 12).map(ph => `<figure class="ph"><img src="${ph.src}" alt="${ph.client}" loading="lazy" decoding="async"><figcaption>${ph.client}</figcaption></figure>`).join("");
+    $("#photosTrack").innerHTML = shuffled("strip", C.photos).slice(0, 12).map((ph, i) => `<figure class="ph ${(ph.w || 4) > (ph.h || 3) ? "ph--wide" : ""}"><img src="${ph.thumb || ph.src}" alt="${ph.client} – photography by Nasser Askar" ${i < 3 ? "" : 'loading="lazy"'} decoding="async"><figcaption>${ph.client}</figcaption></figure>`).join("");
   }
 
   /* -------------------------------------------------------------- services */
@@ -443,7 +486,8 @@
       (type === "radio" ? B[name] === it.id : B.services.has(it.id)) ? "checked" : ""}><span>${it[lang] || it.en}</span></label>`).join("")}</div>`;
   }
   function rangeRow(name, min, max, step) {
-    return `<div class="range"><input type="range" name="${name}" min="${min}" max="${max}" step="${step}" value="${B[name]}" aria-label="${t("q." + name)}"><output>${B[name]}</output></div>`;
+    return `<div class="range"><input type="range" name="${name}" min="${min}" max="${max}" step="${step}" value="${B[name]}" aria-label="${t("q." + name)}">
+      <input class="range__num" type="number" inputmode="numeric" data-for="${name}" min="${min}" max="${max * 5}" step="1" value="${B[name]}" aria-label="${t("q." + name)}"></div>`;
   }
   function renderBuilder() {
     const b = C.builder;
@@ -461,7 +505,8 @@
   function paintRange(r) {
     const p = ((r.value - r.min) / (r.max - r.min)) * 100;
     r.style.setProperty("--p", p + "%");
-    r.nextElementSibling.textContent = r.value;
+    const num = r.parentElement.querySelector(".range__num");
+    if (num && document.activeElement !== num) num.value = B[r.name] ?? r.value;
   }
   function score() {
     let s = B.reels * 1.4 + B.photos / 6 + B.days * 3;
@@ -514,6 +559,13 @@
     form.addEventListener("input", e => {
       const el = e.target;
       if (el.type === "range") { B[el.name] = +el.value; paintRange(el); updateSummary(); }
+      if (el.classList.contains("range__num")) {   // typed number: any whole number, slider follows (capped at its end)
+        const n = Math.max(+el.min || 0, Math.round(+el.value || 0));
+        if (el.value === "") return;
+        B[el.dataset.for] = n;
+        const r = form.querySelector(`input[type=range][name="${el.dataset.for}"]`);
+        r.value = Math.min(n, +r.max); paintRange(r); updateSummary();
+      }
       if (el.type === "radio") { B[el.name] = el.value; updateSummary(); }
       if (el.type === "checkbox" && el.name === "services") { el.checked ? B.services.add(el.value) : B.services.delete(el.value); updateSummary(); }
       if (el.classList.contains("is-invalid")) el.classList.remove("is-invalid");
@@ -550,28 +602,160 @@
   }
 
   /* ------------------------------------------------------------------ book */
-  function renderBook() {
+  /* Booking: our own calendar UI. With contact.bookingApi (Google Apps Script) it shows live free times from
+     Google Calendar and books directly (invite emailed to the client, notification to Nasser).
+     Without it, it shows working hours and sends the request to Nasser by WhatsApp + email. */
+  const BK = { days: null, live: false, month: null, day: null, time: null, step: "pick", loading: false, error: "" };
+  const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  function fallbackSlots() {
+    const days = {}, now = Date.now() + 4 * 3600e3;
+    for (let i = 0; i <= 21; i++) {
+      const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + i);
+      const dow = d.getDay(); // 0 Sun … 6 Sat
+      const hours = dow >= 1 && dow <= 5 ? [9, 17] : dow === 6 ? [10, 14] : null;
+      if (!hours) continue;
+      const slots = [];
+      for (let m = hours[0] * 60; m + 30 <= hours[1] * 60; m += 30) {
+        const t = new Date(d); t.setMinutes(m);
+        if (t.getTime() > now) slots.push(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+      }
+      if (slots.length) days[ymd(d)] = slots;
+    }
+    return days;
+  }
+  async function loadSlots() {
+    BK.loading = true; drawBook();
+    const api = C.contact.bookingApi;
+    if (api) {
+      try {
+        const r = await fetch(api, { method: "GET" });
+        const j = await r.json();
+        if (j.ok) { BK.days = j.days; BK.live = true; }
+      } catch (e) { /* falls back below */ }
+    }
+    if (!BK.days) { BK.days = fallbackSlots(); BK.live = false; }
+    const first = Object.keys(BK.days).sort()[0];
+    BK.month = first ? new Date(first + "T12:00") : new Date();
+    BK.month.setDate(1);
+    BK.loading = false; drawBook();
+  }
+  const fmtTime = s => {
+    const [h, m] = s.split(":").map(Number);
+    if (lang === "ar") return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "ص" : "م"}`;
+    return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+  };
+  const fmtDay = s => new Date(s + "T12:00").toLocaleDateString(lang === "ar" ? "ar-LB" : "en-GB", { weekday: "long", day: "numeric", month: "long" });
+  function drawBook() {
     const panel = $("#bookPanel");
-    if (C.contact.calendarUrl) {
-      panel.innerHTML = `<iframe src="${C.contact.calendarUrl}" title="Book a call with Nasser" loading="lazy"></iframe>`;
+    if (!panel) return;
+    if (BK.loading || !BK.days) {
+      panel.innerHTML = `<div class="bk bk--loading"><div class="bk__spinner"></div><p>${t("book.loading")}</p></div>`;
       return;
     }
-    const d = new Date(), y = d.getFullYear(), m = d.getMonth();
-    const first = (new Date(y, m, 1).getDay() + 6) % 7, days = new Date(y, m + 1, 0).getDate();
-    const heads = (lang === "ar" ? ["ن", "ث", "ر", "خ", "ج", "س", "ح"] : ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]).map(h => `<span class="h">${h}</span>`).join("");
+    const m = BK.month, y = m.getFullYear(), mo = m.getMonth();
+    const first = (new Date(y, mo, 1).getDay() + 6) % 7, nDays = new Date(y, mo + 1, 0).getDate();
+    const heads = (lang === "ar" ? ["ن", "ث", "ر", "خ", "ج", "س", "ح"] : ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]).map(h => `<span class="bk__h">${h}</span>`).join("");
     let cells = "";
-    for (let i = 0; i < first; i++) cells += "<span></span>";
-    for (let i = 1; i <= days; i++) {
-      const wd = (first + i - 1) % 7;
-      const cls = i === d.getDate() ? "today" : (i > d.getDate() && wd < 6 && i % 3 !== 0 ? "free" : "");
-      cells += `<span class="${cls}">${i}</span>`;
+    for (let i = 0; i < first; i++) cells += `<span></span>`;
+    for (let i = 1; i <= nDays; i++) {
+      const key = ymd(new Date(y, mo, i));
+      const free = BK.days[key];
+      cells += free
+        ? `<button type="button" class="bk__day is-free ${BK.day === key ? "is-sel" : ""}" data-day="${key}" aria-label="${fmtDay(key)}">${i}</button>`
+        : `<span class="bk__day">${i}</span>`;
     }
-    panel.innerHTML = `<div class="book__empty"><div class="cal" aria-hidden="true">${heads}${cells}</div>
-      <div><h3>${t("book.empty_title")}</h3><p>${t("book.empty_text")}</p>
-      <div class="book__btns"><a class="btn btn--red magnetic js-wa" target="_blank" rel="noopener" href="#"><span class="wa-dot"></span>${t("cta.whatsapp")}</a></div></div></div>`;
+    const keys = Object.keys(BK.days).sort();
+    const minM = keys[0] ? keys[0].slice(0, 7) : "", maxM = keys.length ? keys[keys.length - 1].slice(0, 7) : "";
+    const cur = `${y}-${String(mo + 1).padStart(2, "0")}`;
+    const monthName = m.toLocaleDateString(lang === "ar" ? "ar-LB" : "en-GB", { month: "long", year: "numeric" });
+    let side = "";
+    if (BK.step === "done") {
+      side = `<div class="bk__done"><div class="bk__check">✓</div><h3>${t(BK.live ? "book.booked" : "book.requested")}</h3>
+        <p>${fmtDay(BK.day)} · ${fmtTime(BK.time)} <small>(${t("book.tz_short")})</small></p>
+        <p class="bk__muted">${t(BK.live ? "book.booked_text" : "book.requested_text")}</p>
+        <a class="btn btn--glass js-wa" target="_blank" rel="noopener" href="#"><span class="wa-dot"></span>${t("cta.whatsapp")}</a></div>`;
+    } else if (BK.step === "form") {
+      side = `<button type="button" class="bk__back" data-act="back">← ${t("book.change")}</button>
+        <div class="bk__picked"><span>${fmtDay(BK.day)}</span><b>${fmtTime(BK.time)}</b></div>
+        <form class="bk__form" id="bkForm" novalidate>
+          <label class="field"><span>${t("form.name")}</span><input name="name" autocomplete="name" required></label>
+          <label class="field"><span>${t("book.email")}</span><input name="email" type="email" autocomplete="email" required></label>
+          <label class="field"><span>${t("form.phone")}</span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+961 …"></label>
+          <label class="field"><span>${t("form.business")}</span><input name="business" autocomplete="organization"></label>
+          <label class="field field--full"><span>${t("form.notes")}</span><textarea name="notes" rows="2"></textarea></label>
+          <input name="website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <p class="form-error" id="bkErr" role="alert">${BK.error || ""}</p>
+          <button class="btn btn--red btn--block" type="submit">${t("book.confirm")}</button>
+        </form>`;
+    } else {
+      const times = BK.day ? BK.days[BK.day] || [] : [];
+      side = `<h3 class="bk__title">${BK.day ? fmtDay(BK.day) : t("book.pick_day")}</h3>
+        <p class="bk__muted">${t("book.tz")}</p>
+        ${BK.day
+          ? `<div class="bk__times">${times.map(s => `<button type="button" class="bk__time" data-time="${s}">${fmtTime(s)}</button>`).join("")}</div>`
+          : `<div class="bk__hint">${t("book.pick_hint")}</div>`}`;
+    }
+    panel.innerHTML = `<div class="bk">
+      <div class="bk__cal">
+        <div class="bk__mhead">
+          <button type="button" class="bk__nav" data-act="prev" ${cur <= minM ? "disabled" : ""} aria-label="Previous month">‹</button>
+          <span>${monthName}</span>
+          <button type="button" class="bk__nav" data-act="next" ${cur >= maxM ? "disabled" : ""} aria-label="Next month">›</button>
+        </div>
+        <div class="bk__grid">${heads}${cells}</div>
+        <p class="bk__legend"><i></i>${t("book.legend")}</p>
+      </div>
+      <div class="bk__side">${side}</div>
+    </div>`;
     wireWa();
-    if (hasGsap && !reduce) gsap.from(".cal span.free", { scale: 0, opacity: 0, stagger: { each: .04, from: "random" }, duration: .6, ease: "back.out(2)", scrollTrigger: { trigger: panel, start: "top 75%" } });
   }
+  async function submitBooking(form) {
+    const fd = Object.fromEntries(new FormData(form).entries());
+    const err = $("#bkErr");
+    if (fd.website) return;
+    if (!fd.name.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(fd.email.trim())) { err.textContent = t("book.err_fields"); return; }
+    const btn = form.querySelector("button[type=submit]");
+    btn.disabled = true; btn.textContent = t("book.sending");
+    const payload = { date: BK.day, time: BK.time, ...fd };
+    if (BK.live) {
+      try {
+        const r = await fetch(C.contact.bookingApi, { method: "POST", body: JSON.stringify(payload) });
+        const j = await r.json();
+        if (!j.ok) {
+          BK.error = t(j.error === "taken" ? "book.taken" : "book.err_generic");
+          if (j.error === "taken") { BK.days = null; BK.step = "pick"; BK.time = null; await loadSlots(); }
+          else { BK.step = "form"; drawBook(); }
+          return;
+        }
+      } catch (e) { BK.error = t("book.err_generic"); BK.step = "form"; drawBook(); return; }
+    } else {
+      // no live calendar yet: request by email (FormSubmit) + WhatsApp
+      const text = `${t("book.wa_request")}\n📅 ${fmtDay(BK.day)} · ${fmtTime(BK.time)} (${t("book.tz_short")})\n👤 ${fd.name}\n✉️ ${fd.email}${fd.phone ? "\n📞 " + fd.phone : ""}${fd.business ? "\n🏢 " + fd.business : ""}${fd.notes ? "\n📝 " + fd.notes : ""}`;
+      const to = C.contact.formEmail || C.contact.email;
+      if (to) fetch(`https://formsubmit.co/ajax/${encodeURIComponent(to)}`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ _subject: `Call request: ${fd.name} – ${BK.day} ${BK.time}`, _template: "box", _captcha: "false", details: text }) }).catch(() => {});
+      window.open(waUrl(text), "_blank", "noopener");
+    }
+    BK.error = ""; BK.step = "done"; drawBook();
+    if (hasGsap && !reduce) gsap.from(".bk__done > *", { y: 20, opacity: 0, stagger: .08, duration: .6, ease: "expo.out" });
+  }
+  function bindBook() {
+    const panel = $("#bookPanel");
+    panel.addEventListener("click", e => {
+      const b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.day) { BK.day = b.dataset.day; BK.time = null; BK.step = "pick"; drawBook();
+        if (hasGsap && !reduce) gsap.from(".bk__time", { y: 12, opacity: 0, stagger: .02, duration: .4, ease: "expo.out" }); }
+      else if (b.dataset.time) { BK.time = b.dataset.time; BK.step = "form"; BK.error = ""; drawBook(); $("#bkForm input[name=name]").focus({ preventScroll: true }); }
+      else if (b.dataset.act === "prev" || b.dataset.act === "next") {
+        BK.month = new Date(BK.month.getFullYear(), BK.month.getMonth() + (b.dataset.act === "next" ? 1 : -1), 1); drawBook(); }
+      else if (b.dataset.act === "back") { BK.step = "pick"; drawBook(); }
+    });
+    panel.addEventListener("submit", e => { e.preventDefault(); submitBooking(e.target); });
+    // load free times when the section gets near the screen
+    const io = new IntersectionObserver(es => { if (es.some(x => x.isIntersecting)) { io.disconnect(); loadSlots(); } }, { rootMargin: "600px" });
+    io.observe(panel);
+  }
+  function renderBook() { if (BK.days || BK.loading) drawBook(); else $("#bookPanel").innerHTML = `<div class="bk bk--loading"><div class="bk__spinner"></div><p>${t("book.loading")}</p></div>`; }
 
   function renderFooter() {
     const c = C.contact;
@@ -812,8 +996,7 @@
       if ($("#moreWork").dataset.mode === "all") return setCategory("all");
       viewLimit += STEP; applyFilter(true);
     });
-    $("#lbClose").addEventListener("click", closeLightbox);
-    $("#lightbox").addEventListener("click", e => { if (e.target.id === "lightbox") closeLightbox(); });
+    bindLightbox(); bindBook();
     addEventListener("keydown", e => { if (e.key === "Escape") { closeLightbox(); closeMenu(); } });
     setTimeout(() => { layoutGrid(); hasGsap && ScrollTrigger.refresh(); }, 600);
   }
