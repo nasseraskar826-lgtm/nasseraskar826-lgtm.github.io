@@ -152,7 +152,34 @@
       b.addEventListener("click", () => setCategory(cat));
       wrap.appendChild(b);
     });
-    requestAnimationFrame(moveIndicator);
+    requestAnimationFrame(() => { moveIndicator(); filterArrows(); });
+  }
+  // category bar: scrolls sideways (arrows, mouse wheel, swipe) when the categories don't fit
+  function filterArrows() {
+    const w = $("#filters"), bar = $("#filterbar"); if (!w || !bar) return;
+    const max = w.scrollWidth - w.clientWidth, pos = Math.abs(w.scrollLeft);
+    bar.classList.toggle("is-static", max < 4);
+    $("#filtPrev").classList.toggle("is-off", pos < 4);
+    $("#filtNext").classList.toggle("is-off", pos > max - 4);
+  }
+  function bindFilterBar() {
+    const w = $("#filters"); if (!w) return;
+    const go = d => w.scrollBy({ left: d * (html.dir === "rtl" ? -1 : 1) * w.clientWidth * .7, behavior: "smooth" });
+    $("#filtPrev").addEventListener("click", () => go(-1));
+    $("#filtNext").addEventListener("click", () => go(1));
+    w.addEventListener("scroll", filterArrows, { passive: true });
+    w.addEventListener("wheel", e => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || w.scrollWidth <= w.clientWidth) return;
+      const max = w.scrollWidth - w.clientWidth, pos = Math.abs(w.scrollLeft), d = e.deltaY * (html.dir === "rtl" ? -1 : 1);
+      if ((d < 0 && pos <= 0) || (d > 0 && pos >= max - 1)) return;  // at the end: let the page scroll
+      e.preventDefault(); e.stopPropagation(); w.scrollLeft += d;
+    }, { passive: false });
+    addEventListener("resize", filterArrows);
+  }
+  function centerActiveFilter() {
+    const w = $("#filters"), b = $(`#filters button[aria-selected="true"]`); if (!w || !b) return;
+    const target = b.offsetLeft - (w.clientWidth - b.offsetWidth) / 2;
+    w.scrollTo({ left: html.dir === "rtl" ? target - (w.scrollWidth - w.clientWidth) : target, behavior: "smooth" });
   }
   function moveIndicator() {
     const b = $(`#filters button[aria-selected="true"]`);
@@ -314,7 +341,7 @@
     activeCat = cat;
     viewLimit = FIRST;
     $$("#filters button").forEach(b => b.setAttribute("aria-selected", b.dataset.cat === cat));
-    moveIndicator();
+    moveIndicator(); centerActiveFilter();
     flash(.18);
     applyFilter(true);
     // bring the grid top into view so the result is visible right away
@@ -342,13 +369,13 @@
         card.addEventListener("mouseenter", () => { playCard(card); cursorState(card.dataset.photo !== undefined ? "view" : "play"); });
         card.addEventListener("mouseleave", () => {
           stopCard(card); cursorState(null);
-          if (hasGsap) gsap.to(card, { rotateX: 0, rotateY: 0, duration: .8, ease: "expo.out" });
+          if (hasGsap) gsap.to(card, { rotateX: 0, rotateY: 0, duration: 1.1, ease: "power2.out" });
         });
         card.addEventListener("mousemove", e => {
           const r = card.getBoundingClientRect();
           const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
           card.style.setProperty("--mx", `${x * 100}%`); card.style.setProperty("--my", `${y * 100}%`);
-          if (hasGsap && !reduce) gsap.to(card, { rotateY: (x - .5) * 8, rotateX: (.5 - y) * 8, transformPerspective: 900, duration: .6, ease: "power3.out" });
+          if (hasGsap && !reduce) gsap.to(card, { rotateY: (x - .5) * 2.5, rotateX: (.5 - y) * 2.5, transformPerspective: 1400, duration: 1.1, ease: "power2.out" });
         });
       }
     });
@@ -403,6 +430,7 @@
     const box = $("#lightbox");
     showInLightbox(card);
     box.classList.add("is-open"); box.setAttribute("aria-hidden", "false");
+    document.body.classList.add("lb-open"); cursorState(null);
     lenis && lenis.stop();
     $("#lbClose").focus();
   }
@@ -419,6 +447,7 @@
     const box = $("#lightbox"), v = $("#lbVideo");
     if (!box.classList.contains("is-open")) return;
     box.classList.remove("is-open"); box.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("lb-open");
     v.pause(); setTimeout(() => { v.removeAttribute("src"); v.load(); }, 400);
     lenis && lenis.start();
     lb.last && lb.last.focus({ preventScroll: true });
@@ -479,6 +508,14 @@
     $("#statsRow").innerHTML = C.stats.map(s => `<div class="stat"><div class="stat__num"><span data-to="${s.value}">0</span><em>${s.suffix}</em></div><div class="stat__label">${L(s.label)}</div></div>`).join("");
   }
 
+
+  /* Every lead also goes to Nasser's Google Form → Google Sheet "Website leads" (monthly report Doc is made from it) */
+  function sendLead(d) {
+    const f = C.contact.leadsForm; if (!f || !f.action) return;
+    const body = new URLSearchParams();
+    Object.entries(f.fields).forEach(([k, entry]) => { if (d[k]) body.append(entry, String(d[k]).slice(0, 2000)); });
+    fetch(f.action, { method: "POST", mode: "no-cors", body }).catch(() => {});
+  }
   /* --------------------------------------------------------------- builder */
   const B = { business: null, services: new Set(), reels: 8, photos: 20, days: 2, budget: null, start: null };
   function chipGroup(name, items, type) {
@@ -550,7 +587,7 @@
       `📅 ${t("q.days")}: ${B.days}`,
       `💰 ${t("q.budget")}: ${find(C.builder.budget, B.budget)}`,
       `⏱ ${t("q.start")}: ${find(C.builder.start, B.start)}`, "",
-      `👤 ${f.name}`, `📞 ${f.phone}`, f.instagram ? `📷 ${f.instagram}` : null,
+      `👤 ${f.name}`, `📞 ${f.phone}`, f.email ? `✉️ ${f.email}` : null, f.instagram ? `📷 ${f.instagram}` : null,
       f.notes ? `📝 ${f.notes}` : null
     ].filter(x => x !== null).join("\n");
   }
@@ -582,6 +619,8 @@
       err.textContent = t("form.sent");
       const text = packageText(fd);
       window.open(waUrl(text), "_blank", "noopener");
+      sendLead({ type: "Package request", name: fd.name, email: fd.email, phone: fd.phone, business: fd.company, instagram: fd.instagram,
+        package: $("#sumTier").textContent, details: text });
       // Email copy of every request (sent even if the visitor never presses "send" in WhatsApp).
       // Uses FormSubmit (no account): contact.formEmail, or contact.email. Web3Forms key also supported.
       const subject = `New package request: ${fd.company} (${$("#sumTier").textContent})`;
@@ -736,6 +775,8 @@
         body: JSON.stringify({ _subject: `Call request: ${fd.name} – ${BK.day} ${BK.time}`, _template: "box", _captcha: "false", details: text }) }).catch(() => {});
       window.open(waUrl(text), "_blank", "noopener");
     }
+    sendLead({ type: BK.live ? "Call booked" : "Call request", name: fd.name, email: fd.email, phone: fd.phone, business: fd.business,
+      when: `${BK.day} ${BK.time} (Beirut)`, details: fd.notes || "" });
     BK.error = ""; BK.step = "done"; drawBook();
     if (hasGsap && !reduce) gsap.from(".bk__done > *", { y: 20, opacity: 0, stagger: .08, duration: .6, ease: "expo.out" });
   }
@@ -982,7 +1023,7 @@
     const q = new URLSearchParams(location.search).get("lang");
     lang = (q === "ar" || q === "en") ? q : (store.get("lang") || "en");
     renderAll(); renderMarquee(); renderWall(); renderPhotos();
-    bindBuilder(); navBehaviour(); menuBehaviour(); cursor(); magnetic(); langToggle();
+    bindBuilder(); bindFilterBar(); navBehaviour(); menuBehaviour(); cursor(); magnetic(); langToggle();
     try { await Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 1500))]); } catch {}
     ready.done = true;
     await loader;
