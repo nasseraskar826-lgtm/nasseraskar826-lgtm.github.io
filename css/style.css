@@ -380,15 +380,30 @@ html[lang="ar"] .final__knock h2{font-size:clamp(4rem,1rem + 13vw,15rem);line-he
 .mbar a{display:flex;align-items:center;gap:.5em;padding:.8em 1.1em;border-radius:999px;font-size:.88rem;font-weight:600;white-space:nowrap}
 .mbar a:first-child{background:var(--red)}
 
-/* ---------- lightbox ---------- */
-.lightbox{position:fixed;inset:0;z-index:260;display:grid;grid-template-columns:auto minmax(240px,340px);gap:32px;align-items:center;justify-content:center;padding:clamp(16px,4vw,48px);
-  background:rgba(12,4,4,.86);-webkit-backdrop-filter:blur(26px);backdrop-filter:blur(26px);opacity:0;visibility:hidden;transition:opacity .45s var(--ease),visibility .45s}
+/* ---------- lightbox (video / photo viewer) ---------- */
+[hidden]{display:none!important}
+.lightbox{position:fixed;inset:0;z-index:260;display:flex;align-items:center;justify-content:center;padding:clamp(16px,3vw,40px) clamp(64px,7vw,110px);
+  background:rgba(12,4,4,.9);-webkit-backdrop-filter:blur(26px);backdrop-filter:blur(26px);opacity:0;visibility:hidden;transition:opacity .45s var(--ease),visibility .45s}
 .lightbox.is-open{opacity:1;visibility:visible}
-.lightbox__stage{max-height:86vh;border-radius:24px;overflow:hidden;box-shadow:0 40px 120px -30px rgba(193,18,31,.6);transform:scale(.92);transition:transform .6s var(--ease)}
-.lightbox.is-open .lightbox__stage{transform:none}
-.lightbox__stage video{max-height:86vh;max-width:min(62vw,1100px);background:#000}
-.lightbox__info h3{font-family:var(--f-display);font-weight:400;font-size:var(--step-2);line-height:1.05;margin:0 0 22px}
-.lightbox__close{position:absolute;top:18px;inset-inline-end:18px;width:48px;height:48px;font-size:1rem}
+.lightbox__body{display:flex;align-items:center;justify-content:center;gap:28px;max-width:100%;max-height:100%}
+.lightbox__stage{margin:0;flex:0 1 auto;display:flex;align-items:center;justify-content:center;min-width:0;transform:scale(.94);opacity:0;transition:transform .6s var(--ease),opacity .4s}
+.lightbox.is-open .lightbox__stage{transform:none;opacity:1}
+.lightbox__stage video,.lightbox__stage img{display:block;width:auto;height:auto;max-height:84vh;max-width:min(64vw,1180px);border-radius:22px;object-fit:contain;
+  box-shadow:0 40px 120px -30px rgba(193,18,31,.55),0 0 0 1px rgba(255,255,255,.08);background:#000}
+.lightbox__stage.is-vertical video,.lightbox__stage.is-vertical img{max-height:84vh;max-width:min(48vh,64vw)}
+.lightbox__stage.is-swap{opacity:0;transform:scale(.97)}
+.lightbox__info{flex:0 0 300px;padding:24px;border-radius:22px;display:flex;flex-direction:column;gap:6px}
+.lightbox__info h3{font-family:var(--f-display);font-weight:400;font-size:clamp(1.4rem,1rem + 1.2vw,2rem);line-height:1.08;margin:4px 0 6px}
+.lightbox__info .eyebrow{margin:0}
+.lb-chip{align-self:flex-start;font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:.45em .8em;border-radius:999px;background:var(--red);color:var(--cream)}
+html[lang="ar"] .lb-chip{letter-spacing:0}
+.lb-count{margin:0 0 14px;color:var(--muted);font-size:.85rem}
+.lightbox__close{position:absolute;top:18px;inset-inline-end:18px;width:48px;height:48px;font-size:1rem;z-index:2}
+.lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:52px;height:52px;font-size:1.8rem;line-height:1;display:grid;place-items:center;z-index:2;transition:background .3s}
+.lb-nav:hover{background:rgba(255,236,226,.18)}
+.lb-nav--prev{inset-inline-start:clamp(8px,1.5vw,28px)}
+.lb-nav--next{inset-inline-end:clamp(8px,1.5vw,28px)}
+html[dir="rtl"] .lb-nav{transform:translateY(-50%) scaleX(-1)}
 
 /* ---------- responsive ---------- */
 @media (max-width:1100px){
@@ -411,9 +426,14 @@ html[lang="ar"] .final__knock h2{font-size:clamp(4rem,1rem + 13vw,15rem);line-he
   .stat:nth-child(2){border-inline-end:0}
   .stat:nth-child(-n+2){border-bottom:1px solid var(--faint)}
   .book__empty{grid-template-columns:1fr}
-  .lightbox{grid-template-columns:1fr;align-content:center;justify-items:center;text-align:center;gap:18px}
-  .lightbox__stage video{max-width:92vw;max-height:70vh}
-  .lightbox__info h3{font-size:1.4rem;margin-bottom:14px}
+  .lightbox{padding:64px 12px 16px;align-items:flex-start}
+  .lightbox__body{flex-direction:column;gap:14px;width:100%}
+  .lightbox__stage video,.lightbox__stage img{max-width:94vw;max-height:62vh}
+  .lightbox__stage.is-vertical video,.lightbox__stage.is-vertical img{max-height:62vh;max-width:94vw}
+  .lightbox__info{flex:0 0 auto;width:100%;padding:16px;text-align:start}
+  .lb-nav{top:auto;bottom:18px;transform:none;width:46px;height:46px}
+  html[dir="rtl"] .lb-nav{transform:scaleX(-1)}
+  .lightbox__info .btn{margin-bottom:58px}
   /* process becomes a stacked layout on phones */
   .process__pin{height:auto;display:flex;flex-direction:column;gap:28px;padding-top:80px}
   .phone{height:56vh}

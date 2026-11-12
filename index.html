@@ -269,11 +269,20 @@
 <!-- Lightbox -->
 <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-hidden="true">
   <button class="lightbox__close glass-pill" id="lbClose" aria-label="Close">✕</button>
-  <div class="lightbox__stage"><video id="lbVideo" controls playsinline></video></div>
-  <div class="lightbox__info">
-    <span class="eyebrow" id="lbClient"></span>
-    <h3 id="lbTitle"></h3>
-    <a class="btn btn--red js-wa-project" href="#" target="_blank" rel="noopener"><span class="wa-dot"></span><span data-i18n="cta.want_this">I want this for my brand</span></a>
+  <button class="lb-nav lb-nav--prev glass-pill" id="lbPrev" aria-label="Previous">‹</button>
+  <button class="lb-nav lb-nav--next glass-pill" id="lbNext" aria-label="Next">›</button>
+  <div class="lightbox__body">
+    <figure class="lightbox__stage" id="lbStage">
+      <video id="lbVideo" controls playsinline preload="metadata"></video>
+      <img id="lbImg" alt="" decoding="async">
+    </figure>
+    <div class="lightbox__info glass">
+      <span class="lb-chip" id="lbCat"></span>
+      <span class="eyebrow" id="lbClient"></span>
+      <h3 id="lbTitle"></h3>
+      <p class="lb-count" id="lbCount"></p>
+      <a class="btn btn--red btn--block js-wa-project" href="#" target="_blank" rel="noopener"><span class="wa-dot"></span><span data-i18n="cta.want_this">I want this for my brand</span></a>
+    </div>
   </div>
 </div>
 
