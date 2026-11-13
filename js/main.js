@@ -366,16 +366,19 @@
       card.addEventListener("click", () => openCard(card));
       card.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openCard(card); } });
       if (finePointer) {
-        card.addEventListener("mouseenter", () => { playCard(card); cursorState(card.dataset.photo !== undefined ? "view" : "play"); });
+        // hover = one small, even "bounce" (the whole card grows ~2% and settles); no tilt, no stretch
+        card.addEventListener("mouseenter", () => {
+          playCard(card); cursorState(card.dataset.photo !== undefined ? "view" : "play");
+          if (hasGsap && !reduce) gsap.to(card, { scale: 1.02, duration: .55, ease: "back.out(2.6)" });
+        });
         card.addEventListener("mouseleave", () => {
           stopCard(card); cursorState(null);
-          if (hasGsap) gsap.to(card, { rotateX: 0, rotateY: 0, duration: 1.1, ease: "power2.out" });
+          if (hasGsap) gsap.to(card, { scale: 1, duration: .45, ease: "power2.out" });
         });
         card.addEventListener("mousemove", e => {
           const r = card.getBoundingClientRect();
           const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
           card.style.setProperty("--mx", `${x * 100}%`); card.style.setProperty("--my", `${y * 100}%`);
-          if (hasGsap && !reduce) gsap.to(card, { rotateY: (x - .5) * 2.5, rotateX: (.5 - y) * 2.5, transformPerspective: 1400, duration: 1.1, ease: "power2.out" });
         });
       }
     });
@@ -651,7 +654,7 @@
     for (let i = 0; i <= 21; i++) {
       const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + i);
       const dow = d.getDay(); // 0 Sun … 6 Sat
-      const hours = dow >= 1 && dow <= 5 ? [9, 17] : dow === 6 ? [10, 14] : null;
+      const hours = [9, 21];  // 9 AM - 9 PM, every day (Beirut)
       if (!hours) continue;
       const slots = [];
       for (let m = hours[0] * 60; m + 30 <= hours[1] * 60; m += 30) {
