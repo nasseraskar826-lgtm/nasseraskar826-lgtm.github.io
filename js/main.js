@@ -87,7 +87,7 @@
   function scrollToEl(el) { lenis ? lenis.scrollTo(el, { offset: -70 }) : el.scrollIntoView({ behavior: reduce ? "auto" : "smooth" }); }
 
   /* --------------------------------------------------------------- render */
-  const verticals = () => shuffled("verticals", C.projects.filter(p => p.orientation === "vertical"));
+  const verticals = () => shuffled("verticals", C.projects.filter(p => p.orientation === "vertical" && p.category !== "bts"));
 
   function renderWall() {
     const inner = $("#wallInner");
@@ -136,8 +136,9 @@
   }
 
   function catCount(cat) {
-    if (cat === "all") return C.projects.length + C.photos.length;
-    if (cat === "photo") return C.photos.length;
+    // behind-the-scenes work has its own tab only: it is not mixed into "All" or "Photography"
+    if (cat === "all") return C.projects.filter(p => p.category !== "bts").length + C.photos.filter(p => p.category !== "bts").length;
+    if (cat === "photo") return C.photos.filter(p => p.category !== "bts").length;
     return C.projects.filter(p => p.category === cat).length + C.photos.filter(p => p.category === cat).length;
   }
 
@@ -204,7 +205,7 @@
     return `<article class="card card--photo" data-cat="photo" data-photo="${i}" tabindex="0" role="button" aria-label="${ph.client} photo">
       <div class="card__media"><img src="${ph.thumb || ph.src}" alt="${ph.client} – ${t("cat." + ph.category)} photography by Nasser Askar" loading="lazy" decoding="async"></div>
       <span class="card__shine"></span>
-      <span class="card__cat">${t("cat.photo")}</span>
+      <span class="card__cat">${t(ph.category === "bts" ? "cat.bts" : "cat.photo")}</span>
       <div class="card__info"><div><span class="card__client">${ph.client}</span></div></div>
     </article>`;
   }
@@ -292,8 +293,9 @@
 
   // a photo belongs to "Photography" and to its client's category (e.g. F&B photos show under F&B)
   function cardMatches(c) {
-    if (activeCat === "all") return true;
-    if (c.dataset.photo !== undefined) return activeCat === "photo" || C.photos[+c.dataset.photo].category === activeCat;
+    const pc = c.dataset.photo !== undefined ? C.photos[+c.dataset.photo].category : null;
+    if (activeCat === "all") return (pc || c.dataset.cat) !== "bts";
+    if (pc) return (activeCat === "photo" && pc !== "bts") || pc === activeCat;
     return c.dataset.cat === activeCat;
   }
   let filterTl = null;
@@ -411,7 +413,7 @@
       v.hidden = true; v.removeAttribute("src"); v.load();
       img.hidden = false; img.src = ph.src; img.alt = `${ph.client} – photography by Nasser Askar`;
       stage.classList.toggle("is-vertical", (ph.h || 4) > (ph.w || 3));
-      cat = t("cat.photo"); client = ph.client; title = t("cat." + ph.category);
+      cat = t(ph.category === "bts" ? "cat.bts" : "cat.photo"); client = ph.client; title = t(ph.category === "bts" ? "bts.photo" : "cat." + ph.category);
       msgItem = `${ph.client} (${t("cat.photo")})`;
     } else {
       const p = C.projects.find(x => x.id === card.dataset.id);
