@@ -229,23 +229,45 @@
     const mixed = [];
     const queues = shuffled("groups", Object.values(groups)).map(q => q.slice());
     while (queues.some(q => q.length)) queues.forEach(q => q.length && mixed.push(q.shift()));
-    const parts = [];
+    // Speed: the grid only knows the ORDER of every piece here; a card is built the first time it is shown
+    // (16 at first, +24 per "Show more"), instead of building all ~900 cards and video players on page load.
+    const seq = [];
     let pi = 0;
     const photoOrder = shuffled("photos", C.photos.map((_, i) => i));
     mixed.forEach((p, i) => {
-      parts.push(cardHTML(p));
-      if (i % 4 === 3 && pi < photoOrder.length) { parts.push(photoCardHTML(C.photos[photoOrder[pi]], photoOrder[pi])); pi++; }
+      seq.push({ p });
+      if (i % 4 === 3 && pi < photoOrder.length) { seq.push({ ph: photoOrder[pi] }); pi++; }
     });
-    for (; pi < photoOrder.length; pi++) parts.push(photoCardHTML(C.photos[photoOrder[pi]], photoOrder[pi]));
-    grid.innerHTML = parts.join("");
+    for (; pi < photoOrder.length; pi++) seq.push({ ph: photoOrder[pi] });
     // fixed order per category, so the same filter always gives the same, tidy layout
-    const cards = $$(".card", grid);
-    cards.forEach((c, i) => c.dataset.allOrder = i);
+    seq.forEach((g, i) => { g.allOrder = i; g.el = null; });
     let k = 0;
-    cards.filter(c => c.dataset.photo === undefined).forEach(c => c.dataset.catOrder = k++);
-    cards.filter(c => c.dataset.photo !== undefined).forEach(c => c.dataset.catOrder = k++);
+    seq.filter(g => g.p).forEach(g => g.catOrder = k++);
+    seq.filter(g => g.ph !== undefined).forEach(g => g.catOrder = k++);
+    GRID = seq;
+    grid.innerHTML = "";
     applyFilter(false);
-    bindCards();
+  }
+  let GRID = [];
+  const tmpl = document.createElement("template");
+  function cardEl(g) {   // build (once) the card for one grid item
+    if (g.el) return g.el;
+    tmpl.innerHTML = g.p ? cardHTML(g.p) : photoCardHTML(C.photos[g.ph], g.ph);
+    const el = tmpl.content.firstElementChild;
+    el.dataset.allOrder = g.allOrder; el.dataset.catOrder = g.catOrder; el.hidden = true;
+    $("#grid").appendChild(el);
+    bindCard(el);
+    newCards.push(el);
+    return (g.el = el);
+  }
+  let newCards = [], revealReady = false;
+  function revealCards(els) {   // the "rise in" of each card's picture as it scrolls into view
+    if (!hasGsap || reduce || !els.length) return;
+    ScrollTrigger.batch(els, {
+      start: "top 92%", once: true,
+      // reveal the inside of the card only, so the card's own position (masonry) is never touched
+      onEnter: b => gsap.from(b.map(e => e.querySelector(".card__media")), { yPercent: 12, opacity: 0, scale: 1.08, duration: 1.1, ease: "expo.out", stagger: .06 })
+    });
   }
 
   // Masonry: every visible card goes into the shortest column, in a fixed order.
@@ -292,26 +314,27 @@
   }
 
   // a photo belongs to "Photography" and to its client's category (e.g. F&B photos show under F&B)
-  function cardMatches(c) {
-    const pc = c.dataset.photo !== undefined ? C.photos[+c.dataset.photo].category : null;
-    if (activeCat === "all") return (pc || c.dataset.cat) !== "bts";
-    if (pc) return (activeCat === "photo" && pc !== "bts") || pc === activeCat;
-    return c.dataset.cat === activeCat;
+  function itemMatches(g) {
+    const cat = g.p ? g.p.category : C.photos[g.ph].category;
+    if (activeCat === "all") return cat !== "bts";
+    if (activeCat === "photo") return !g.p && cat !== "bts";
+    return cat === activeCat;
   }
   let filterTl = null;
   function applyFilter(animate = true) {
-    const cards = $$("#grid .card");
-    const isShown = c => !c.hidden;
-    const before = new Set(cards.filter(isShown));
+    const before = new Set($$("#grid .card").filter(c => !c.hidden));
     let shown = 0;
     const order = activeCat === "all" ? "allOrder" : "catOrder";
-    const ordered = cards.slice().sort((a, b) => a.dataset[order] - b.dataset[order]);
+    const ordered = GRID.slice().sort((a, b) => a[order] - b[order]);
     const next = new Set();
-    ordered.forEach(c => {
-      const match = cardMatches(c);
-      if (match && shown < viewLimit) next.add(c);
+    newCards = [];
+    ordered.forEach(g => {
+      const match = itemMatches(g);
+      if (match && shown < viewLimit) next.add(cardEl(g));
       if (match) shown++;
     });
+    const cards = $$("#grid .card");
+    if (revealReady) revealCards(newCards);
     const moreBtn = $("#moreWork");
     moreBtn.hidden = false;
     moreBtn.dataset.mode = shown > viewLimit ? "more" : (activeCat === "all" ? "none" : "all");
@@ -363,8 +386,9 @@
     v.pause(); card.classList.remove("is-playing"); playing.delete(card);
   }
 
-  function bindCards() {
-    $$("#grid .card").forEach(card => {
+  let cardIO = null;
+  function bindCard(card) {
+    {
       card.addEventListener("click", () => openCard(card));
       card.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openCard(card); } });
       if (finePointer) {
@@ -383,16 +407,16 @@
           card.style.setProperty("--mx", `${x * 100}%`); card.style.setProperty("--my", `${y * 100}%`);
         });
       }
-    });
-    if (!finePointer && "IntersectionObserver" in window) {
-      const io = new IntersectionObserver(entries => {
+    }
+    if (!finePointer && "IntersectionObserver" in window && !card.classList.contains("card--photo")) {
+      cardIO = cardIO || new IntersectionObserver(entries => {
         entries.forEach(en => {
           const card = en.target;
           if (en.isIntersecting && en.intersectionRatio > .6) { if (playing.size < 4) playCard(card); }
           else stopCard(card);
         });
       }, { threshold: [0, .6, 1] });
-      $$("#grid .card:not(.card--photo)").forEach(c => io.observe(c));
+      cardIO.observe(card);
     }
   }
 
@@ -864,11 +888,7 @@
       gsap.from(h.children, { y: 50, opacity: 0, duration: 1.1, ease: "expo.out", stagger: .08, scrollTrigger: { trigger: h, start: "top 85%" } });
     });
     // work cards rise in
-    ScrollTrigger.batch("#grid .card", {
-      start: "top 92%", once: true,
-      // reveal the inside of the card only, so the card's own position (masonry) is never touched
-      onEnter: els => gsap.from(els.map(e => e.querySelector(".card__media")), { yPercent: 12, opacity: 0, scale: 1.08, duration: 1.1, ease: "expo.out", stagger: .06 })
-    });
+    revealReady = true; revealCards($$("#grid .card"));
     ScrollTrigger.create({ trigger: "#work", start: "top 60%", once: true, onEnter: () => flash(.2) });
 
     // process: pinned phone with fanning glass cards (desktop)
