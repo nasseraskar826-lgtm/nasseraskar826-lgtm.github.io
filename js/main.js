@@ -539,7 +539,23 @@
 
 
   /* Every lead also goes to Nasser's Google Form → Google Sheet "Website leads" (monthly report Doc is made from it) */
+  /* Meta Pixel (for Facebook/Instagram ads): off until contact.metaPixel in site.json has the Pixel ID.
+     Events: PageView, Contact (WhatsApp / call / email click), Lead (package request), Schedule (call booked). */
+  function initPixel() {
+    const id = C.contact.metaPixel; if (!id || window.fbq) return;
+    const n = window.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); };
+    window._fbq = n; n.push = n; n.loaded = true; n.version = "2.0"; n.queue = [];
+    const sc = document.createElement("script"); sc.async = true; sc.src = "https://connect.facebook.net/en_US/fbevents.js";
+    document.head.appendChild(sc);
+    fbq("init", String(id)); fbq("track", "PageView");
+    document.addEventListener("click", e => {
+      const a = e.target.closest && e.target.closest("a[href]"); if (!a) return;
+      if (/wa\.me|whatsapp\.com|^tel:|^mailto:/i.test(a.getAttribute("href"))) pixel("Contact");
+    }, true);
+  }
+  function pixel(ev, params) { try { window.fbq && fbq("track", ev, params || {}); } catch (e) {} }
   function sendLead(d) {
+    pixel(/call/i.test(d.type || "") ? "Schedule" : "Lead", { content_name: d.package || d.type || "" });
     const f = C.contact.leadsForm; if (!f || !f.action) return;
     const body = new URLSearchParams();
     Object.entries(f.fields).forEach(([k, entry]) => { if (d[k]) body.append(entry, String(d[k]).slice(0, 2000)); });
@@ -1041,6 +1057,7 @@
     const loader = runLoader(ready);
     try {
       C = await fetch("content/site.json", { cache: "no-cache" }).then(r => r.json());
+      try { initPixel(); } catch (e) {}
     } catch (e) {
       console.error("Could not load content/site.json — open the site through a web server (see README).", e);
       return;
